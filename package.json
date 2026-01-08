@@ -10,7 +10,7 @@
     "sync": "node src/utils/sync-database.js",
     "dev": "next dev",
     "build": "next build",
-    "server": "next start",
+    "server": "next start -p 8496",
     "create-admin": "node src/utils/create-admin.js",
     "cron:test": "node src/index.js"
   },

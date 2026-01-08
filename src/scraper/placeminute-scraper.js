@@ -18,16 +18,28 @@ if (!fs.existsSync(DOWNLOAD_PATH)) {
 }
 
 const launchBrowser = async () => {
-  return await puppeteer.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-    ],
-  });
+  try {
+    return await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
+      ],
+    });
+  } catch (error) {
+    if (error.message.includes('cannot open shared object file') || error.message.includes('Failed to launch')) {
+      logger.error('Erreur de lancement du navigateur. Des dépendances système sont manquantes.', error);
+      logger.error('Sur Ubuntu/Debian, installez les dépendances avec :');
+      logger.error('sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 libatspi2.0-0');
+      logger.error('Voir INSTALL-LINUX.md pour plus de détails.');
+    }
+    throw error;
+  }
 };
 
 const waitForTimeout = (ms) => new Promise(resolve => setTimeout(resolve, ms));

@@ -26,6 +26,7 @@ A complete management system for scraped Placeminute billetterie data with web i
 - Node.js (v18 or higher)
 - MySQL database
 - npm or pnpm
+- **Linux uniquement** : Dépendances système pour Puppeteer (voir [INSTALL-LINUX.md](INSTALL-LINUX.md))
 
 ## Installation
 
@@ -119,6 +120,10 @@ Then open your browser at `http://localhost:3000`
 npm run build
 npm run server
 ```
+
+L'application sera servie sur le port **8496** par défaut.
+
+Pour le déploiement sur VPS, voir [DEPLOY-VPS.md](DEPLOY-VPS.md)
 
 ## Project Structure
 
