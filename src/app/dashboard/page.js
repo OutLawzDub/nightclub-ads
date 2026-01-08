@@ -17,12 +17,53 @@ export default function DashboardPage() {
   const [ageFilter, setAgeFilter] = useState('tous'); // 'tous', 'majeur', 'mineur'
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [smsCredits, setSmsCredits] = useState(null);
   const itemsPerPage = 25;
   const router = useRouter();
 
   useEffect(() => {
     fetchUsers();
+    loadCreditsFromStorage();
+    fetchSmsCredits();
   }, []);
+
+  const loadCreditsFromStorage = () => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('smsCredits');
+      if (stored) {
+        try {
+          setSmsCredits(parseInt(stored, 10));
+        } catch (e) {
+          console.error('Error loading credits from storage:', e);
+        }
+      }
+    }
+  };
+
+  const fetchSmsCredits = async () => {
+    try {
+      const response = await fetch('/api/brevo-credits');
+      const data = await response.json();
+      if (data.success) {
+        setSmsCredits(data.credits);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('smsCredits', data.credits.toString());
+        }
+      }
+    } catch (err) {
+      console.error('Erreur lors de la récupération des crédits:', err);
+    }
+  };
+
+  const handleCampaignSuccess = (remainingCredits) => {
+    if (remainingCredits !== undefined && remainingCredits !== null) {
+      setSmsCredits(remainingCredits);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('smsCredits', remainingCredits.toString());
+      }
+    }
+    setSelectedUsers([]);
+  };
 
   useEffect(() => {
     filterUsers();
@@ -145,11 +186,21 @@ export default function DashboardPage() {
                 📍 Étape 1 sur 2 : Configurez votre annonce en sélectionnant les utilisateurs cibles
               </p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-center">
+              {smsCredits !== null && (
+                <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="font-semibold">{smsCredits}</span>
+                  <span className="text-xs opacity-90">crédits SMS</span>
+                </div>
+              )}
               {selectedUsers.length > 0 && (
                 <button
                   onClick={() => setShowAnnonceModal(true)}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-500 hover:to-emerald-500 transition-all duration-300 hover:scale-105 active:scale-95 animate__animated animate__pulse"
+                  disabled={smsCredits !== null && smsCredits < selectedUsers.length}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-500 hover:to-emerald-500 transition-all duration-300 hover:scale-105 active:scale-95 animate__animated animate__pulse disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   📢 Faire mon annonce ({selectedUsers.length})
                 </button>
@@ -168,6 +219,11 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
+          {smsCredits !== null && selectedUsers.length > 0 && smsCredits < selectedUsers.length && (
+            <div className="mt-4 bg-red-900/30 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
+              ⚠️ Crédits insuffisants ! Vous avez {smsCredits} crédit(s) disponible(s) mais {selectedUsers.length} SMS doivent être envoyés (1 crédit = 1 SMS). Il manque {selectedUsers.length - smsCredits} crédit(s). Veuillez recharger vos crédits SMS sur votre compte Brevo avant de continuer.
+            </div>
+          )}
         </div>
 
         <div className="bg-gray-800 rounded-2xl shadow-2xl p-6 mb-6 animate__animated animate__fadeInUp">
@@ -414,13 +470,16 @@ export default function DashboardPage() {
           isOpen={showAnnonceModal}
           onClose={() => setShowAnnonceModal(false)}
           selectedUserIds={selectedUsers}
+          onSuccess={handleCampaignSuccess}
+          smsCredits={smsCredits}
+          onCreditsUpdate={setSmsCredits}
         />
       )}
     </div>
   );
 }
 
-function AnnonceModal({ isOpen, onClose, selectedUserIds }) {
+function AnnonceModal({ isOpen, onClose, selectedUserIds, onSuccess, smsCredits: parentCredits, onCreditsUpdate }) {
   const [messageType, setMessageType] = useState('sms');
   const whatsappMaintenance = true;
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -431,7 +490,7 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [charCount, setCharCount] = useState(0);
-  const [smsCredits, setSmsCredits] = useState(null);
+  const [smsCredits, setSmsCredits] = useState(parentCredits);
   const [isLoadingCredits, setIsLoadingCredits] = useState(false);
 
   const templates = [
@@ -477,16 +536,24 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds }) {
   }, [whatsappMaintenance]);
 
   useEffect(() => {
+    if (parentCredits !== null && parentCredits !== undefined) {
+      setSmsCredits(parentCredits);
+    }
+  }, [parentCredits]);
+
+  useEffect(() => {
     if (messageType === 'sms') {
       setSelectedTemplate('');
       setImageFile(null);
       setImagePreview(null);
-      fetchSmsCredits();
+      if (smsCredits === null) {
+        fetchSmsCredits();
+      }
     }
   }, [messageType]);
 
   useEffect(() => {
-    if (isOpen && messageType === 'sms') {
+    if (isOpen && messageType === 'sms' && smsCredits === null) {
       fetchSmsCredits();
     }
   }, [isOpen, messageType]);
@@ -498,6 +565,12 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds }) {
       const data = await response.json();
       if (data.success) {
         setSmsCredits(data.credits);
+        if (onCreditsUpdate) {
+          onCreditsUpdate(data.credits);
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('smsCredits', data.credits.toString());
+        }
       }
     } catch (err) {
       console.error('Erreur lors de la récupération des crédits:', err);
@@ -588,6 +661,16 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds }) {
               });
             }, 1000);
           }
+
+          if (onSuccess) {
+            onSuccess(data.credits.remaining);
+          }
+          if (onCreditsUpdate) {
+            onCreditsUpdate(data.credits.remaining);
+          }
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('smsCredits', data.credits.remaining.toString());
+          }
         } else {
           toast.success(data.message || 'Annonce envoyée avec succès !', {
             duration: 3000,
@@ -604,6 +687,9 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds }) {
           setImagePreview(null);
           setMessage('');
           setCharCount(0);
+          if (onSuccess) {
+            onSuccess();
+          }
         }, 2000);
       } else {
         const errorMessage = data.error || 'Échec de l\'envoi de l\'annonce';
