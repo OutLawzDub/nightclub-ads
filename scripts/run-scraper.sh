@@ -15,13 +15,16 @@ if [ -f .env ]; then
     export $(cat .env | grep -v '^#' | xargs)
 fi
 
-# Trouver le chemin vers node (utiliser pnpm si disponible, sinon node)
+# Trouver le gestionnaire de paquets (utiliser pnpm si disponible, sinon npm)
 if command -v pnpm &> /dev/null; then
-    NODE_CMD="pnpm"
-    SCRAPER_CMD="pnpm start"
+    PKG_MANAGER="pnpm"
+    SCRAPER_CMD="pnpm run scraper"
+elif command -v npm &> /dev/null; then
+    PKG_MANAGER="npm"
+    SCRAPER_CMD="npm run scraper"
 else
-    NODE_CMD="node"
-    SCRAPER_CMD="node src/index.js"
+    echo "Error: pnpm or npm not found in PATH"
+    exit 1
 fi
 
 # Exécuter le scraper
