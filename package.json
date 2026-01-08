@@ -1,0 +1,50 @@
+{
+  "name": "nightclub-ads",
+  "version": "1.0.0",
+  "description": "Scraper for Placeminute billetterie with MySQL storage",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "scraper": "node src/scraper/placeminute-scraper.js",
+    "sync": "node src/utils/sync-database.js",
+    "dev": "next dev",
+    "build": "next build",
+    "server": "next start",
+    "create-admin": "node src/utils/create-admin.js"
+  },
+  "keywords": [
+    "scraper",
+    "puppeteer",
+    "mysql",
+    "sequelize"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@getbrevo/brevo": "^3.0.1",
+    "animate.css": "^4.1.1",
+    "bcryptjs": "^3.0.2",
+    "better-auth": "^1.3.32",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "mysql2": "^3.11.4",
+    "next": "^16.0.0",
+    "nodemailer": "^7.0.10",
+    "prompts": "^2.4.2",
+    "puppeteer": "^23.8.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sequelize": "^6.37.3",
+    "sonner": "^2.0.7",
+    "twilio": "^5.10.6",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "nodemon": "^3.1.3",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17"
+  }
+}

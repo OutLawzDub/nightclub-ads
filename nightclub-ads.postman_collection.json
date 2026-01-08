@@ -1,0 +1,275 @@
+{
+	"info": {
+		"_postman_id": "nightclub-ads-api",
+		"name": "Nightclub Ads API",
+		"description": "Collection complète pour tester toutes les routes de l'API Nightclub Ads",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"your-password\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"login"
+							]
+						},
+						"description": "Connexion d'un utilisateur avec email et mot de passe"
+					},
+					"response": []
+				},
+				{
+					"name": "Forgot Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/forgot-password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"forgot-password"
+							]
+						},
+						"description": "Demande de réinitialisation de mot de passe"
+					},
+					"response": []
+				},
+				{
+					"name": "Reset Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"reset-token-from-email\",\n  \"password\": \"new-password\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/reset-password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"reset-password"
+							]
+						},
+						"description": "Réinitialisation du mot de passe avec un token"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Get All Users",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						},
+						"description": "Récupérer la liste de tous les utilisateurs"
+					},
+					"response": []
+				},
+				{
+					"name": "Create User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phoneNumber\": \"+33612345678\",\n  \"email\": \"user@example.com\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"postalCode\": \"75001\",\n  \"birthDate\": \"1990-01-15\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						},
+						"description": "Créer un nouvel utilisateur"
+					},
+					"response": []
+				},
+				{
+					"name": "Update User",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phoneNumber\": \"+33612345678\",\n  \"email\": \"updated@example.com\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"postalCode\": \"75002\",\n  \"birthDate\": \"1992-05-20\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "ID de l'utilisateur à modifier"
+								}
+							]
+						},
+						"description": "Mettre à jour un utilisateur existant"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "ID de l'utilisateur à supprimer"
+								}
+							]
+						},
+						"description": "Supprimer un utilisateur"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Annonces",
+			"item": [
+				{
+					"name": "Send Annonce",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "template",
+									"value": "template-name",
+									"type": "text",
+									"description": "Nom du template à utiliser"
+								},
+								{
+									"key": "text",
+									"value": "Message de l'annonce",
+									"type": "text",
+									"description": "Texte de l'annonce"
+								},
+								{
+									"key": "userIds",
+									"value": "[1, 2, 3]",
+									"type": "text",
+									"description": "Tableau JSON des IDs des utilisateurs"
+								},
+								{
+									"key": "image",
+									"type": "file",
+									"src": [],
+									"description": "Image optionnelle (max 5 Mo)"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/send-annonce",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"send-annonce"
+							]
+						},
+						"description": "Envoyer une annonce à plusieurs utilisateurs"
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		}
+	]
+}
+
