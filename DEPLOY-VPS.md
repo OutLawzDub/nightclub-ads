@@ -34,7 +34,11 @@ pnpm run build
 2. Démarrer avec PM2 :
 
 ```bash
+# Démarrer avec la configuration
 pm2 start ecosystem.config.cjs
+
+# Ou démarrer en mode production
+pm2 start ecosystem.config.cjs --env production
 ```
 
 3. Sauvegarder la configuration PM2 :
@@ -43,6 +47,8 @@ pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
 ```
+
+La configuration PM2 est dans le fichier `ecosystem.config.cjs` à la racine du projet.
 
 #### Commandes PM2 utiles
 
