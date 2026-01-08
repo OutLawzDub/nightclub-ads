@@ -5,6 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { connectDatabase } from '../config/database.js';
 import { processCsvData } from '../utils/process-csv-data.js';
+import { logger } from '../utils/logger.js';
 
 dotenv.config();
 
@@ -33,24 +34,24 @@ const waitForTimeout = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const handleCookieConsent = async (page) => {
   try {
-    console.log('Checking for cookie consent...');
+    logger.info('Checking for cookie consent...');
     await waitForTimeout(2000);
     
     const acceptButton = await page.$('button[data-cky-tag="accept-button"]');
     if (acceptButton) {
-      console.log('Cookie consent found, accepting...');
+      logger.info('Cookie consent found, accepting...');
       await acceptButton.click();
       await waitForTimeout(1000);
     } else {
-      console.log('No cookie consent found');
+      logger.debug('No cookie consent found');
     }
   } catch (error) {
-    console.log('Cookie consent not found or already handled');
+    logger.warn('Cookie consent not found or already handled', error);
   }
 };
 
 const login = async (page, email, password) => {
-  console.log('Logging in to Placeminute...');
+  logger.info('Logging in to Placeminute...');
   
   try {
     await page.goto('https://pro.placeminute.com/connexion.html', {
@@ -60,7 +61,7 @@ const login = async (page, email, password) => {
     await handleCookieConsent(page);
 
     await page.waitForSelector('#_username', { timeout: 10000 });
-    console.log('Login form found');
+    logger.info('Login form found');
     
     await page.click('#_username', { clickCount: 3 });
     await page.type('#_username', email);
@@ -70,7 +71,7 @@ const login = async (page, email, password) => {
     await page.type('#_password', password);
 
     await page.click('button[type="submit"]');
-    console.log('Submit button clicked, waiting for navigation...');
+    logger.info('Submit button clicked, waiting for navigation...');
 
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
     
@@ -79,15 +80,15 @@ const login = async (page, email, password) => {
       throw new Error('Login failed - still on login page or error page');
     }
     
-    console.log('Login successful');
+    logger.success('Login successful');
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error', error);
     throw error;
   }
 };
 
 const getEventList = async (page) => {
-  console.log('Navigating to events page...');
+  logger.info('Navigating to events page...');
   
   try {
     await page.goto('https://pro.placeminute.com/event/event.html', {
@@ -115,10 +116,10 @@ const getEventList = async (page) => {
       return eventData;
     });
 
-    console.log(`Found ${events.length} event(s)`);
+    logger.success(`Found ${events.length} event(s)`, { eventsCount: events.length, eventIds: events.map(e => e.eventId) });
     return events;
   } catch (error) {
-    console.error('Error getting event list:', error);
+    logger.error('Error getting event list', error);
     throw error;
   }
 };
@@ -144,17 +145,17 @@ const renameLatestCsvFile = async (eventId) => {
       const newPath = path.join(DOWNLOAD_PATH, newName);
       
       fs.renameSync(oldPath, newPath);
-      console.log(`Renamed file to: ${newName}`);
+      logger.success(`Renamed file to: ${newName}`, { eventId, oldName: latestFile, newName });
       return newName;
     }
   } catch (error) {
-    console.error('Error renaming CSV file:', error);
+    logger.error('Error renaming CSV file', error);
   }
 };
 
 const downloadEventCsv = async (page, eventGroupId, eventId) => {
   try {
-    console.log(`Downloading CSV for event ${eventId}...`);
+    logger.info(`Downloading CSV for event ${eventId}...`, { eventId, eventGroupId });
     
     const exportUrl = `https://pro.placeminute.com/event/${eventGroupId}/${eventId}/ticket/export-database.html`;
     
@@ -167,24 +168,24 @@ const downloadEventCsv = async (page, eventGroupId, eventId) => {
     
     const renamedFile = await renameLatestCsvFile(eventId);
     if (renamedFile) {
-      console.log(`CSV downloaded and renamed: ${renamedFile}`);
+      logger.success(`CSV downloaded and renamed: ${renamedFile}`, { eventId, fileName: renamedFile });
     } else {
-      console.log(`CSV downloaded for event ${eventId}`);
+      logger.warn(`CSV downloaded for event ${eventId} but file not renamed`, { eventId });
     }
   } catch (error) {
     if (error.message.includes('ERR_ABORTED')) {
-      console.log(`CSV download initiated for event ${eventId} (ERR_ABORTED is normal for downloads)`);
+      logger.info(`CSV download initiated for event ${eventId} (ERR_ABORTED is normal for downloads)`, { eventId });
       await waitForTimeout(2000);
       await renameLatestCsvFile(eventId);
     } else {
-      console.error(`Error downloading CSV for event ${eventId}:`, error.message);
+      logger.error(`Error downloading CSV for event ${eventId}`, error);
     }
   }
 };
 
 const setupDownloadBehavior = async (page) => {
   const client = await page.target().createCDPSession();
-  console.log(`Setting download path to: ${DOWNLOAD_PATH}`);
+  logger.info(`Setting download path to: ${DOWNLOAD_PATH}`, { downloadPath: DOWNLOAD_PATH });
   await client.send('Page.setDownloadBehavior', {
     behavior: 'allow',
     downloadPath: DOWNLOAD_PATH,
@@ -192,6 +193,7 @@ const setupDownloadBehavior = async (page) => {
 };
 
 const scrapePlaceminute = async () => {
+  logger.info('Starting Placeminute scraper...');
   const browser = await launchBrowser();
   const page = await browser.newPage();
 
@@ -209,7 +211,7 @@ const scrapePlaceminute = async () => {
     const events = await getEventList(page);
     
     if (events.length === 0) {
-      console.log('No events found');
+      logger.warn('No events found');
       return [];
     }
 
@@ -223,12 +225,16 @@ const scrapePlaceminute = async () => {
       });
     }
 
-    console.log(`Successfully downloaded ${downloadedFiles.length} CSV file(s)`);
+    logger.success(`Successfully downloaded ${downloadedFiles.length} CSV file(s)`, { 
+      downloadedCount: downloadedFiles.length,
+      events: downloadedFiles 
+    });
     return downloadedFiles;
   } catch (error) {
-    console.error('Scraping error:', error);
+    logger.error('Scraping error', error);
     throw error;
   } finally {
+    logger.info('Closing browser...');
     await browser.close();
   }
 };
@@ -243,18 +249,22 @@ const isMainModule = process.argv[1] && (
 if (isMainModule) {
   (async () => {
     try {
+      logger.info('Connecting to database...');
       await connectDatabase();
+      logger.success('Database connected');
+      
       const events = await scrapePlaceminute();
       
       if (events && events.length > 0) {
-        console.log('\nStarting CSV data processing...');
+        logger.info('Starting CSV data processing...');
         await processCsvData();
+        logger.success('CSV data processing completed');
       }
       
-      console.log('Scraping and processing completed successfully');
+      logger.success('Scraping and processing completed successfully');
       process.exit(0);
     } catch (error) {
-      console.error('Scraping failed:', error);
+      logger.error('Scraping failed', error);
       process.exit(1);
     }
   })();

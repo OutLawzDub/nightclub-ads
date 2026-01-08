@@ -11,7 +11,8 @@
     "dev": "next dev",
     "build": "next build",
     "server": "next start",
-    "create-admin": "node src/utils/create-admin.js"
+    "create-admin": "node src/utils/create-admin.js",
+    "cron:test": "node src/index.js"
   },
   "keywords": [
     "scraper",
