@@ -453,13 +453,13 @@ export const addContactsToList = async (users, listId) => {
   }
 };
 
-export const createAndSendSmsCampaign = async (campaignName, message, listId, sender = 'Nightclub') => {
+export const createAndSendSmsCampaign = async (campaignName, message, listId, sender = null) => {
   try {
     const { smsCampaignsApi } = initializeApis();
     
     const campaign = new CreateSmsCampaign();
     campaign.name = campaignName;
-    campaign.sender = sender;
+    campaign.sender = sender || process.env.BREVO_SMS_SENDER || 'Nightclub';
     campaign.content = message;
     campaign.recipients = { listIds: [listId] };
     const now = new Date();
@@ -494,6 +494,8 @@ export const sendBulkSmsViaBrevo = async (users, message, campaignName = null) =
       throw new Error(`Crédits SMS insuffisants. Vous avez ${creditsInfo.credits} crédit(s) disponible(s) mais ${requiredCredits} SMS doivent être envoyés (1 crédit = 1 SMS). Il manque ${missingCredits} crédit(s). Veuillez recharger vos crédits SMS sur votre compte Brevo avant de continuer.`);
     }
     
+    const messageWithStop = `${message}\n\nRépondre STOP au [STOP_CODE]`;
+    
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, '-').replace('T', ' ').substring(0, 19);
     const uniqueId = Math.random().toString(36).substring(2, 9);
@@ -523,7 +525,7 @@ export const sendBulkSmsViaBrevo = async (users, message, campaignName = null) =
     }
     
     console.log(`Création et envoi de la campagne SMS: ${campaignNameFinal}`);
-    const campaignResult = await createAndSendSmsCampaign(campaignNameFinal, message, listId);
+    const campaignResult = await createAndSendSmsCampaign(campaignNameFinal, messageWithStop, listId);
     
     return {
       success: true,
