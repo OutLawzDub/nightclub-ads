@@ -2,24 +2,17 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SimpleCaptcha } from '@/components/SimpleCaptcha';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
-    if (!isCaptchaVerified) {
-      setError('Veuillez compléter la vérification mathématique');
-      return;
-    }
     
     setIsLoading(true);
 
@@ -116,8 +109,6 @@ export default function LoginPage() {
               </a>
             </div>
           </div>
-
-          <SimpleCaptcha onVerify={setIsCaptchaVerified} />
 
           <div>
             <button
