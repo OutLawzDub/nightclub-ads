@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server';
 import { ensureDatabaseConnection } from '../../database-wrapper.js';
 import { updateUser } from '../../../../services/user.service.js';
 import User from '../../../../models/user.model.js';
+import { requireAuth } from '../../../../utils/auth-middleware.js';
 
 export const dynamic = 'force-dynamic';
 
 export async function PUT(request, { params }) {
+  const authError = await requireAuth(request);
+  if (authError) return authError;
+
   try {
     await ensureDatabaseConnection();
     const { id } = params;
@@ -23,6 +27,9 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  const authError = await requireAuth(request);
+  if (authError) return authError;
+
   try {
     await ensureDatabaseConnection();
     const { id } = params;

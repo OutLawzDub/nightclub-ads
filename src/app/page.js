@@ -33,10 +33,23 @@ export default function LoginPage() {
       });
 
       const data = await response.json();
+      console.log('🔍 [Login] Response data:', data);
 
       if (response.ok) {
-        router.push('/dashboard');
+        if (data.token) {
+          console.log('✅ [Login] Token received, storing in localStorage');
+          localStorage.setItem('authToken', data.token);
+          console.log('✅ [Login] Token stored, redirecting to dashboard in 100ms');
+          setTimeout(() => {
+            console.log('🔄 [Login] Redirecting to /dashboard');
+            window.location.href = '/dashboard';
+          }, 100);
+        } else {
+          console.error('❌ [Login] No token in response');
+          setError('Token manquant dans la réponse');
+        }
       } else {
+        console.error('❌ [Login] Login failed:', data.error);
         setError(data.error || 'Échec de la connexion');
       }
     } catch (err) {

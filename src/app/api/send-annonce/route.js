@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { ensureDatabaseConnection } from '../database-wrapper.js';
 import { getUserByIds } from '../../../services/user.service.js';
 import { sendBulkSmsViaBrevo } from '../../../services/brevo-sms.service.js';
+import { requireAuth } from '../../../utils/auth-middleware.js';
 
 export async function POST(req) {
+  const authError = await requireAuth(req);
+  if (authError) return authError;
+
   try {
     await ensureDatabaseConnection();
 

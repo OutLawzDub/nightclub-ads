@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { ensureDatabaseConnection } from '../database-wrapper.js';
 import { findAllUsers, createUser } from '../../../services/user.service.js';
+import { requireAuth } from '../../../utils/auth-middleware.js';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
+  const authError = await requireAuth(request);
+  if (authError) return authError;
+
   try {
     await ensureDatabaseConnection();
     const users = await findAllUsers();
@@ -19,6 +23,9 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  const authError = await requireAuth(request);
+  if (authError) return authError;
+
   try {
     await ensureDatabaseConnection();
     const userData = await request.json();

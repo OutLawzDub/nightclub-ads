@@ -47,6 +47,9 @@ DB_PASSWORD=
 DB_NAME=nightclub
 DB_PORT=3306
 
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_EXPIRES_IN=24h
+
 PLACEMINUTE_URL=https://pro.placeminute.com/connexion.html
 PLACEMINUTE_EMAIL=your-email@example.com
 PLACEMINUTE_PASSWORD=your-password

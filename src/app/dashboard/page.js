@@ -4,6 +4,24 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
+const getAuthHeaders = () => {
+  if (typeof window === 'undefined') return {};
+  const token = localStorage.getItem('authToken');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+const handleAuthError = (response, router) => {
+  if (response.status === 401) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('smsCredits');
+      router.push('/');
+    }
+    return true;
+  }
+  return false;
+};
+
 export default function DashboardPage() {
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
@@ -18,14 +36,92 @@ export default function DashboardPage() {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [smsCredits, setSmsCredits] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const itemsPerPage = 25;
   const router = useRouter();
 
   useEffect(() => {
-    fetchUsers();
-    loadCreditsFromStorage();
-    fetchSmsCredits();
+    console.log('🔍 [Dashboard] useEffect - checkAuthentication called');
+    checkAuthentication();
   }, []);
+
+  useEffect(() => {
+    console.log('🔍 [Dashboard] useEffect - isAuthenticated changed:', isAuthenticated);
+    if (isAuthenticated) {
+      console.log('✅ [Dashboard] User authenticated, fetching data...');
+      fetchUsers();
+      loadCreditsFromStorage();
+      fetchSmsCredits();
+    }
+  }, [isAuthenticated]);
+
+  const checkAuthentication = async () => {
+    console.log('🔍 [Dashboard] checkAuthentication - Starting...');
+    
+    if (typeof window === 'undefined') {
+      console.log('⚠️ [Dashboard] checkAuthentication - window is undefined (SSR)');
+      setIsCheckingAuth(false);
+      setIsAuthenticated(false);
+      return;
+    }
+
+    const token = localStorage.getItem('authToken');
+    console.log('🔍 [Dashboard] checkAuthentication - Token from localStorage:', token ? `${token.substring(0, 30)}...` : 'null');
+    
+    if (!token) {
+      console.log('❌ [Dashboard] checkAuthentication - No token found, redirecting to login');
+      setIsCheckingAuth(false);
+      setIsAuthenticated(false);
+      router.push('/');
+      return;
+    }
+
+    console.log('🔍 [Dashboard] checkAuthentication - Sending request to /api/auth/check');
+    try {
+      const response = await fetch('/api/auth/check', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      console.log('🔍 [Dashboard] checkAuthentication - Response status:', response.status, response.statusText);
+      
+      const data = await response.json();
+      console.log('🔍 [Dashboard] checkAuthentication - Response data:', data);
+
+      if (response.ok && data.authenticated) {
+        console.log('✅ [Dashboard] checkAuthentication - Authentication successful');
+        setIsAuthenticated(true);
+      } else {
+        console.error('❌ [Dashboard] checkAuthentication - Authentication failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          data: data,
+          token: token.substring(0, 20) + '...',
+        });
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('smsCredits');
+        setIsAuthenticated(false);
+        console.log('🔄 [Dashboard] checkAuthentication - Redirecting to login page');
+        router.push('/');
+      }
+    } catch (error) {
+      console.error('❌ [Dashboard] checkAuthentication - Error:', error);
+      console.error('❌ [Dashboard] checkAuthentication - Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('smsCredits');
+      setIsAuthenticated(false);
+      console.log('🔄 [Dashboard] checkAuthentication - Redirecting to login page due to error');
+      router.push('/');
+    } finally {
+      console.log('🔍 [Dashboard] checkAuthentication - Finished, setting isCheckingAuth to false');
+      setIsCheckingAuth(false);
+    }
+  };
 
   const loadCreditsFromStorage = () => {
     if (typeof window !== 'undefined') {
@@ -42,7 +138,24 @@ export default function DashboardPage() {
 
   const fetchSmsCredits = async () => {
     try {
-      const response = await fetch('/api/brevo-credits');
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        router.push('/');
+        return;
+      }
+
+      const response = await fetch('/api/brevo-credits', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('authToken');
+        router.push('/');
+        return;
+      }
+
       const data = await response.json();
       if (data.success) {
         setSmsCredits(data.credits);
@@ -52,6 +165,10 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error('Erreur lors de la récupération des crédits:', err);
+      if (err.message?.includes('401') || err.message?.includes('Unauthorized')) {
+        localStorage.removeItem('authToken');
+        router.push('/');
+      }
     }
   };
 
@@ -125,11 +242,32 @@ export default function DashboardPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('/api/users');
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        router.push('/');
+        return;
+      }
+
+      const response = await fetch('/api/users', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('authToken');
+        router.push('/');
+        return;
+      }
+
       const data = await response.json();
       setUsers(data.users);
     } catch (error) {
       console.error('Error fetching users:', error);
+      if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        localStorage.removeItem('authToken');
+        router.push('/');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -143,7 +281,15 @@ export default function DashboardPage() {
     try {
       const response = await fetch(`/api/users/${id}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
       });
+
+      if (handleAuthError(response, router)) {
+        return;
+      }
 
       if (response.ok) {
         fetchUsers();
@@ -160,8 +306,35 @@ export default function DashboardPage() {
   };
 
   const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('smsCredits');
+    }
     router.push('/');
   };
+
+  console.log('🔍 [Dashboard] Render - State:', {
+    isCheckingAuth,
+    isAuthenticated,
+    isLoading,
+    usersCount: users.length,
+  });
+
+  if (isCheckingAuth) {
+    console.log('⏳ [Dashboard] Render - Showing loading (checking auth)');
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="animate__animated animate__fadeIn">
+          <div className="text-2xl text-white animate__animated animate__pulse">Vérification de l'authentification...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    console.log('❌ [Dashboard] Render - Not authenticated, returning null');
+    return null;
+  }
 
   if (isLoading) {
     return (
@@ -174,74 +347,85 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8 animate__animated animate__fadeIn">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4 sm:p-6 lg:p-8 animate__animated animate__fadeIn">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-gray-800 rounded-2xl shadow-2xl p-6 mb-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate__animated animate__fadeInDown">
+        <div className="bg-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 mb-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate__animated animate__fadeInDown">
                 Gestion des utilisateurs
               </h1>
-              <p className="text-sm text-gray-400 mt-2 animate__animated animate__fadeInUp">
+              <p className="text-xs sm:text-sm text-gray-400 mt-2 animate__animated animate__fadeInUp">
                 📍 Étape 1 sur 2 : Configurez votre annonce en sélectionnant les utilisateurs cibles
               </p>
             </div>
-            <div className="flex gap-4 items-center">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 lg:gap-4 items-stretch sm:items-center">
               {smsCredits !== null && (
-                <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="font-semibold">{smsCredits}</span>
-                  <span className="text-xs opacity-90">crédits SMS</span>
+                  <span className="font-semibold text-sm sm:text-base">{smsCredits}</span>
+                  <span className="text-xs opacity-90 hidden sm:inline">crédits SMS</span>
                 </div>
               )}
               {selectedUsers.length > 0 && (
-                <button
-                  onClick={() => setShowAnnonceModal(true)}
-                  disabled={smsCredits !== null && smsCredits < selectedUsers.length}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-lg hover:from-green-500 hover:to-emerald-500 transition-all duration-300 hover:scale-105 active:scale-95 animate__animated animate__pulse disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                >
-                  📢 Faire mon annonce ({selectedUsers.length})
-                </button>
+                <>
+                  <div className="bg-gray-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm">
+                    <span className="text-gray-300">Coût:</span>
+                    <span className="font-semibold text-blue-400">{selectedUsers.length}</span>
+                    <span className="text-gray-400 hidden sm:inline">crédit(s)</span>
+                  </div>
+                  <button
+                    onClick={() => setShowAnnonceModal(true)}
+                    disabled={smsCredits !== null && smsCredits < selectedUsers.length}
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:from-green-500 hover:to-emerald-500 transition-all duration-300 hover:scale-105 active:scale-95 animate__animated animate__pulse disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 text-sm sm:text-base"
+                  >
+                    📢 Faire mon annonce ({selectedUsers.length})
+                  </button>
+                </>
               )}
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg hover:from-purple-500 hover:to-pink-500 transition-all duration-300 hover:scale-105 active:scale-95 animate__animated animate__pulse"
-              >
-                + Ajouter un utilisateur
-              </button>
-              <button
-                onClick={handleLogout}
-                className="bg-gray-700 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-all duration-300"
-              >
-                Déconnexion
-              </button>
+              <div className="flex gap-2 sm:gap-3">
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex-1 sm:flex-none bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:from-purple-500 hover:to-pink-500 transition-all duration-300 hover:scale-105 active:scale-95 animate__animated animate__pulse text-sm sm:text-base"
+                >
+                  <span className="hidden sm:inline">+ Ajouter un utilisateur</span>
+                  <span className="sm:hidden">+ Ajouter</span>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="bg-gray-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-gray-600 transition-all duration-300 text-sm sm:text-base"
+                >
+                  <span className="hidden sm:inline">Déconnexion</span>
+                  <span className="sm:hidden">Déco</span>
+                </button>
+              </div>
             </div>
           </div>
           {smsCredits !== null && selectedUsers.length > 0 && smsCredits < selectedUsers.length && (
-            <div className="mt-4 bg-red-900/30 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
+            <div className="mt-4 bg-red-900/30 border border-red-700 text-red-200 px-3 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm">
               ⚠️ Crédits insuffisants ! Vous avez {smsCredits} crédit(s) disponible(s) mais {selectedUsers.length} SMS doivent être envoyés (1 crédit = 1 SMS). Il manque {selectedUsers.length - smsCredits} crédit(s). Veuillez recharger vos crédits SMS sur votre compte Brevo avant de continuer.
             </div>
           )}
         </div>
 
-        <div className="bg-gray-800 rounded-2xl shadow-2xl p-6 mb-6 animate__animated animate__fadeInUp">
-          <div className="flex flex-col md:flex-row gap-4">
+        <div className="bg-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6 mb-4 sm:mb-6 animate__animated animate__fadeInUp">
+          <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
             <div className="flex-1">
               <input
                 type="text"
                 placeholder="Rechercher par nom, email ou téléphone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-600 bg-gray-700 text-white rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-600 bg-gray-700 text-white rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 text-sm sm:text-base"
               />
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <select
                 value={ageFilter}
                 onChange={(e) => setAgeFilter(e.target.value)}
-                className="px-4 py-3 border border-gray-600 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-3 border border-gray-600 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 text-sm sm:text-base"
               >
                 <option value="tous">Tous les âges</option>
                 <option value="majeur">Majeurs uniquement</option>
@@ -249,20 +433,20 @@ export default function DashboardPage() {
               </select>
             </div>
           </div>
-          <div className="mt-4 flex justify-between items-center">
-            <div className="text-sm text-gray-400">
+          <div className="mt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="text-xs sm:text-sm text-gray-400">
               {filteredUsers.length} utilisateur(s) trouvé(s) • {selectedUsers.length} sélectionné(s)
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 w-full sm:w-auto">
               <button
                 onClick={() => setSelectedUsers(filteredUsers.map(u => u.id))}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:from-blue-500 hover:to-cyan-500 transition-all duration-300 text-sm font-medium"
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:from-blue-500 hover:to-cyan-500 transition-all duration-300 text-xs sm:text-sm font-medium"
               >
                 ✓ Tout sélectionner
               </button>
               <button
                 onClick={() => setSelectedUsers([])}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-all duration-300 text-sm font-medium"
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-all duration-300 text-xs sm:text-sm font-medium"
               >
                 Tout désélectionner
               </button>
@@ -270,125 +454,134 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-gray-800 rounded-2xl shadow-2xl p-6 animate__animated animate__fadeInUp">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-gray-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-16">
-                    Sélection
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Téléphone
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    E-mail
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Nom
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Code postal
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Date de naissance
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-gray-800 divide-y divide-gray-700">
-                {paginatedUsers.map((user, index) => (
-                  <tr key={user.id} className="hover:bg-gray-700 transition-colors duration-200 animate__animated animate__fadeIn" style={{ animationDelay: `${index * 50}ms` }}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <label className="flex items-center justify-center cursor-pointer group">
-                        <div className={`
-                          w-6 h-6 rounded-lg border-2 transition-all duration-300 flex items-center justify-center
-                          ${selectedUsers.includes(user.id) 
-                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 border-transparent shadow-lg shadow-purple-500/50' 
-                            : 'bg-gray-700 border-gray-600 group-hover:border-purple-500 group-hover:bg-gray-600'
-                          }
-                        `}>
-                          {selectedUsers.includes(user.id) && (
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
+        <div className="bg-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6 animate__animated animate__fadeInUp">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="inline-block min-w-full align-middle">
+              <div className="overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-700">
+                  <thead className="bg-gray-700">
+                    <tr>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-12 sm:w-16">
+                        Sélection
+                      </th>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        Téléphone
+                      </th>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell">
+                        E-mail
+                      </th>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        Nom
+                      </th>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell">
+                        Code postal
+                      </th>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell">
+                        Date de naissance
+                      </th>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        Statut
+                      </th>
+                      <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-gray-800 divide-y divide-gray-700">
+                    {paginatedUsers.map((user, index) => (
+                      <tr key={user.id} className="hover:bg-gray-700 transition-colors duration-200 animate__animated animate__fadeIn" style={{ animationDelay: `${index * 50}ms` }}>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                          <label className="flex items-center justify-center cursor-pointer group">
+                            <div className={`
+                              w-5 h-5 sm:w-6 sm:h-6 rounded-lg border-2 transition-all duration-300 flex items-center justify-center
+                              ${selectedUsers.includes(user.id) 
+                                ? 'bg-gradient-to-r from-purple-600 to-pink-600 border-transparent shadow-lg shadow-purple-500/50' 
+                                : 'bg-gray-700 border-gray-600 group-hover:border-purple-500 group-hover:bg-gray-600'
+                              }
+                            `}>
+                              {selectedUsers.includes(user.id) && (
+                                <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.includes(user.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedUsers([...selectedUsers, user.id]);
+                                } else {
+                                  setSelectedUsers(selectedUsers.filter(id => id !== user.id));
+                                }
+                              }}
+                              className="sr-only"
+                            />
+                          </label>
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-white">
+                          {user.phoneNumber}
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-300 hidden md:table-cell">
+                          {user.email || '-'}
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-300">
+                          <div className="flex flex-col">
+                            <span>{user.firstName} {user.lastName}</span>
+                            <span className="text-xs text-gray-500 md:hidden">{user.email || '-'}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-300 hidden lg:table-cell">
+                          {user.postalCode || '-'}
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-300 hidden lg:table-cell">
+                          {user.birthDate || '-'}
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                          {user.birthDate ? (
+                            isAdult(user.birthDate) ? (
+                              <span className="px-2 py-1 bg-green-900 text-green-200 rounded-lg text-xs font-medium">Majeur</span>
+                            ) : (
+                              <span className="px-2 py-1 bg-orange-900 text-orange-200 rounded-lg text-xs font-medium">Mineur</span>
+                            )
+                          ) : (
+                            <span className="px-2 py-1 bg-gray-700 text-gray-400 rounded-lg text-xs">-</span>
                           )}
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={selectedUsers.includes(user.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedUsers([...selectedUsers, user.id]);
-                            } else {
-                              setSelectedUsers(selectedUsers.filter(id => id !== user.id));
-                            }
-                          }}
-                          className="sr-only"
-                        />
-                      </label>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                      {user.phoneNumber}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {user.email || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {user.firstName} {user.lastName}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {user.postalCode || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {user.birthDate || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {user.birthDate ? (
-                        isAdult(user.birthDate) ? (
-                          <span className="px-2 py-1 bg-green-900 text-green-200 rounded-lg text-xs font-medium">Majeur</span>
-                        ) : (
-                          <span className="px-2 py-1 bg-orange-900 text-orange-200 rounded-lg text-xs font-medium">Mineur</span>
-                        )
-                      ) : (
-                        <span className="px-2 py-1 bg-gray-700 text-gray-400 rounded-lg text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(user)}
-                        className="text-purple-400 hover:text-purple-300 mr-4 transition-colors duration-200 transform hover:scale-110"
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        className="text-red-400 hover:text-red-300 transition-colors duration-200 transform hover:scale-110"
-                      >
-                        Supprimer
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              onClick={() => handleEdit(user)}
+                              className="text-purple-400 hover:text-purple-300 transition-colors duration-200 transform hover:scale-110"
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              onClick={() => handleDelete(user.id)}
+                              className="text-red-400 hover:text-red-300 transition-colors duration-200 transform hover:scale-110"
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
           
           {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-between">
-              <div className="text-sm text-gray-400">
+            <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs sm:text-sm text-gray-400">
                 Page {currentPage} sur {totalPages} ({filteredUsers.length} utilisateur(s) au total)
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-center">
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  className="px-3 sm:px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 text-xs sm:text-sm"
                 >
                   Précédent
                 </button>
@@ -403,7 +596,7 @@ export default function DashboardPage() {
                       <button
                         key={page}
                         onClick={() => handlePageChange(page)}
-                        className={`px-4 py-2 rounded-lg transition-all duration-300 ${
+                        className={`px-3 sm:px-4 py-2 rounded-lg transition-all duration-300 text-xs sm:text-sm ${
                           currentPage === page
                             ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
                             : 'bg-gray-700 text-white hover:bg-gray-600'
@@ -413,7 +606,7 @@ export default function DashboardPage() {
                       </button>
                     );
                   } else if (page === currentPage - 3 || page === currentPage + 3) {
-                    return <span key={page} className="text-gray-400">...</span>;
+                    return <span key={page} className="text-gray-400 text-xs sm:text-sm">...</span>;
                   }
                   return null;
                 })}
@@ -421,7 +614,7 @@ export default function DashboardPage() {
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  className="px-3 sm:px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 text-xs sm:text-sm"
                 >
                   Suivant
                 </button>
@@ -432,15 +625,17 @@ export default function DashboardPage() {
       </div>
 
       {selectedUsers.length > 0 && (
-        <div className="fixed bottom-8 right-8 z-40 animate__animated animate__fadeInUp">
+        <div className="fixed bottom-4 sm:bottom-8 right-4 sm:right-8 z-40 animate__animated animate__fadeInUp">
           <button
             onClick={() => setShowAnnonceModal(true)}
-            className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-full shadow-2xl hover:from-green-500 hover:to-emerald-500 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center gap-3 font-medium text-lg animate__animated animate__pulse"
+            disabled={smsCredits !== null && smsCredits < selectedUsers.length}
+            className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-full shadow-2xl hover:from-green-500 hover:to-emerald-500 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center gap-2 sm:gap-3 font-medium text-sm sm:text-lg animate__animated animate__pulse disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
-            <span>Faire mon annonce ({selectedUsers.length})</span>
+            <span className="hidden sm:inline">Faire mon annonce ({selectedUsers.length})</span>
+            <span className="sm:hidden">Annonce ({selectedUsers.length})</span>
           </button>
         </div>
       )}
@@ -636,10 +831,30 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds, onSuccess, smsCredits:
       formData.append('text', customText);
       formData.append('userIds', JSON.stringify(selectedUserIds));
 
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      if (!token) {
+        setError('Vous devez être connecté pour envoyer une annonce');
+        toast.error('Non authentifié', {
+          description: 'Veuillez vous reconnecter.',
+        });
+        return;
+      }
+
       const response = await fetch('/api/send-annonce', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         body: formData,
       });
+
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('authToken');
+          window.location.href = '/';
+        }
+        return;
+      }
 
       const data = await response.json();
 
@@ -714,13 +929,13 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds, onSuccess, smsCredits:
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 animate__animated animate__fadeIn">
-      <div className="bg-gray-800 rounded-2xl p-8 max-w-2xl w-full shadow-2xl animate__animated animate__zoomIn max-h-[90vh] overflow-y-auto">
-        <div className="mb-6">
-          <h2 className="text-3xl font-bold mb-2 text-transparent bg-gradient-to-r from-green-400 via-emerald-400 to-green-400 bg-clip-text">
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 animate__animated animate__fadeIn p-4">
+      <div className="bg-gray-800 rounded-2xl p-4 sm:p-6 lg:p-8 max-w-2xl w-full shadow-2xl animate__animated animate__zoomIn max-h-[90vh] overflow-y-auto">
+        <div className="mb-4 sm:mb-6">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2 text-transparent bg-gradient-to-r from-green-400 via-emerald-400 to-green-400 bg-clip-text">
             Faire mon annonce
           </h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-xs sm:text-sm text-gray-400">
             📍 Étape 2 sur 2 : Personnalisez votre annonce pour {selectedUserIds.length} utilisateur(s)
           </p>
         </div>
@@ -880,20 +1095,36 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds, onSuccess, smsCredits:
               📊 <strong>{selectedUserIds.length}</strong> utilisateur(s) sélectionné(s) recevront cette annonce
             </p>
             {messageType === 'sms' && (
-              <div className="pt-2 border-t border-gray-600">
+              <div className="pt-2 border-t border-gray-600 space-y-2">
                 {isLoadingCredits ? (
                   <p className="text-xs text-gray-500">Chargement des crédits...</p>
                 ) : smsCredits !== null ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">Crédits SMS disponibles:</span>
-                    <span className={`text-sm font-semibold ${
-                      smsCredits >= selectedUserIds.length 
-                        ? 'text-green-400' 
-                        : 'text-red-400'
-                    }`}>
-                      {smsCredits}
-                    </span>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">Crédits SMS disponibles:</span>
+                      <span className={`text-sm font-semibold ${
+                        smsCredits >= selectedUserIds.length 
+                          ? 'text-green-400' 
+                          : 'text-red-400'
+                      }`}>
+                        {smsCredits}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-blue-900/30 px-3 py-2 rounded border border-blue-700">
+                      <span className="text-xs text-blue-300">Coût de l'annonce:</span>
+                      <span className="text-sm font-bold text-blue-400">
+                        {selectedUserIds.length} crédit(s)
+                      </span>
+                    </div>
+                    {smsCredits >= selectedUserIds.length && (
+                      <div className="flex items-center justify-between bg-green-900/30 px-3 py-2 rounded border border-green-700">
+                        <span className="text-xs text-green-300">Crédits restants après envoi:</span>
+                        <span className="text-sm font-bold text-green-400">
+                          {smsCredits - selectedUserIds.length} crédit(s)
+                        </span>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <p className="text-xs text-yellow-400">Impossible de récupérer les crédits</p>
                 )}
@@ -906,11 +1137,11 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds, onSuccess, smsCredits:
             )}
           </div>
 
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-gray-700 text-white px-4 py-3 rounded-lg hover:bg-gray-600 transition-all duration-300 transform hover:scale-105 active:scale-95"
+              className="flex-1 bg-gray-700 text-white px-4 py-2 sm:py-3 rounded-lg hover:bg-gray-600 transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-base"
             >
               Annuler
             </button>
@@ -921,7 +1152,7 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds, onSuccess, smsCredits:
                 (messageType === 'sms' && charCount > 160) ||
                 (messageType === 'sms' && smsCredits !== null && smsCredits < selectedUserIds.length)
               }
-              className={`flex-1 text-white px-4 py-3 rounded-lg transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`flex-1 text-white px-4 py-2 sm:py-3 rounded-lg transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base ${
                 messageType === 'whatsapp'
                   ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500'
                   : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400'
@@ -937,6 +1168,7 @@ function AnnonceModal({ isOpen, onClose, selectedUserIds, onSuccess, smsCredits:
 }
 
 function AddUserModal({ isOpen, onClose, onSuccess }) {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     phoneNumber: '',
     email: '',
@@ -956,9 +1188,14 @@ function AddUserModal({ isOpen, onClose, onSuccess }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(formData),
       });
+
+      if (handleAuthError(response, router)) {
+        return;
+      }
 
       const data = await response.json();
 
@@ -976,9 +1213,9 @@ function AddUserModal({ isOpen, onClose, onSuccess }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 animate__animated animate__fadeIn">
-      <div className="bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl animate__animated animate__zoomIn">
-        <h2 className="text-3xl font-bold mb-6 text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text">Ajouter un utilisateur</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 animate__animated animate__fadeIn p-4">
+      <div className="bg-gray-800 rounded-2xl p-4 sm:p-6 lg:p-8 max-w-md w-full shadow-2xl animate__animated animate__zoomIn max-h-[90vh] overflow-y-auto">
+        <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text">Ajouter un utilisateur</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg animate__animated animate__shakeX">
@@ -1051,6 +1288,7 @@ function AddUserModal({ isOpen, onClose, onSuccess }) {
 }
 
 function EditUserModal({ isOpen, user, onClose, onSuccess }) {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     phoneNumber: user.phoneNumber || '',
     email: user.email || '',
@@ -1070,9 +1308,14 @@ function EditUserModal({ isOpen, user, onClose, onSuccess }) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(formData),
       });
+
+      if (handleAuthError(response, router)) {
+        return;
+      }
 
       const data = await response.json();
 
@@ -1090,9 +1333,9 @@ function EditUserModal({ isOpen, user, onClose, onSuccess }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 animate__animated animate__fadeIn">
-      <div className="bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl animate__animated animate__zoomIn">
-        <h2 className="text-3xl font-bold mb-6 text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text">Modifier l'utilisateur</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 animate__animated animate__fadeIn p-4">
+      <div className="bg-gray-800 rounded-2xl p-4 sm:p-6 lg:p-8 max-w-md w-full shadow-2xl animate__animated animate__zoomIn max-h-[90vh] overflow-y-auto">
+        <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text">Modifier l'utilisateur</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg animate__animated animate__shakeX">
